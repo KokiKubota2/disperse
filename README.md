@@ -1,36 +1,98 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Disperse POC - 人事異動支援システム
 
-## Getting Started
+Disperse は、企業の人事異動を効率化する AI 支援 Web サービスです。このリポジトリは POC（概念実証）版の実装です。
 
-First, run the development server:
+## 🚀 機能
+
+- ✅ **Basic 認証システム** - シンプルなアクセス制御
+- ✅ **AI チャット機能** - OpenAI GPT-4o-mini 統合
+- ✅ **HTTPS 開発環境** - 自己署名証明書対応
+- 🚧 **Excel ファイル読み込み** - 従業員データ管理（準備中）
+- 🚧 **AI 分析・提案** - 人事異動最適化（準備中）
+
+## 🛠️ 技術スタック
+
+- **Frontend**: Next.js 15 + TypeScript + Tailwind CSS
+- **UI**: shadcn/ui + Radix UI
+- **AI**: OpenAI GPT-4o-mini
+- **Auth**: Basic 認証 + Cookie
+- **Development**: Turbopack + HTTPS
+
+## 📋 セットアップ
+
+### 1. 依存関係のインストール
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. 環境変数の設定
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+プロジェクトルートに`.env.local`ファイルを作成し、以下の環境変数を設定：
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+# Basic認証
+BASIC_AUTH_USERNAME=admin
+BASIC_AUTH_PASSWORD=your_secure_password_here
 
-## Learn More
+# OpenAI API
+OPENAI_API_KEY=your_openai_api_key_here
 
-To learn more about Next.js, take a look at the following resources:
+# 開発設定
+NODE_ENV=development
+NEXT_PUBLIC_APP_ENV=poc
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+⚠️ **重要**:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `BASIC_AUTH_PASSWORD`には安全なパスワードを設定してください
+- `.env.local`ファイルは Git にコミットしないでください（`.gitignore`で除外済み）
+- 本番環境では環境変数を直接設定してください
 
-## Deploy on Vercel
+### 3. 開発サーバーの起動
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+pnpm dev
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+HTTPS で開発サーバーが起動します：
+
+- **URL**: `https://localhost:3000`
+- **ログイン**: `admin` / `[設定したパスワード]`
+
+## 📚 ドキュメント
+
+詳細なドキュメントは [`docs/`](./docs/) ディレクトリを参照してください：
+
+- [アーキテクチャ設計書](./docs/architecture.md) - システム設計と POC 要件
+- [ドキュメント一覧](./docs/README.md) - 全ドキュメントの目次
+
+## 🔧 開発
+
+### スクリプト
+
+```bash
+pnpm dev          # 開発サーバー起動（HTTPS）
+pnpm build        # プロダクションビルド
+pnpm start        # プロダクションサーバー起動
+pnpm lint         # ESLintチェック
+```
+
+### 開発フェーズ
+
+- [x] **Phase 1**: Basic 認証 + AI チャット
+- [ ] **Phase 2**: Excel ファイル読み込み
+- [ ] **Phase 3**: AI 分析・提案機能
+- [ ] **Phase 4**: パフォーマンス測定・最適化
+
+## 🚀 デプロイ
+
+Vercel でのデプロイに対応：
+
+```bash
+pnpm build
+```
+
+## 📄 ライセンス
+
+このプロジェクトは POC（概念実証）用です。

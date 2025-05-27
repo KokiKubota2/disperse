@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+certificates
+
+# データファイル（POC用）
+/data/excel/*.xlsx
+/data/excel/*.xls
+/data/processed/*.json
+/data/results/*.json
