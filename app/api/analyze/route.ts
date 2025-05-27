@@ -19,9 +19,18 @@ export async function POST(request: NextRequest) {
       hasData: !!data,
       employeeCount: employees.length,
       departmentCount: departments.length,
+      environment: process.env.NODE_ENV,
+      dataStoreData: data ? 'データあり' : 'データなし',
     })
 
     if (employees.length === 0) {
+      console.error('従業員データが見つかりません:', {
+        dataStoreHasData: !!data,
+        dataStoreEmployees: employees,
+        dataStoreDepartments: departments,
+        environment: process.env.NODE_ENV,
+      })
+
       return NextResponse.json(
         {
           error:
@@ -30,6 +39,9 @@ export async function POST(request: NextRequest) {
             hasData: !!data,
             employeeCount: employees.length,
             departmentCount: departments.length,
+            environment: process.env.NODE_ENV,
+            suggestion:
+              '本番環境では、セッション中にサンプルデータを再読み込みしてください。',
           },
         },
         { status: 400 }

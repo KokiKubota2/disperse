@@ -40,26 +40,42 @@ export class AIAnalyzer {
    */
   private extractJSON(content: string): any {
     try {
+      console.log('AI応答の生データ:', content)
+
       // マークダウンのコードブロックを除去
       let cleanContent = content
         .replace(/```json\n?/g, '')
         .replace(/```\n?/g, '')
         .trim()
 
+      console.log('マークダウン除去後:', cleanContent)
+
       // JSONオブジェクトの開始と終了を見つける
       const startIndex = cleanContent.indexOf('{')
       const endIndex = cleanContent.lastIndexOf('}')
 
       if (startIndex === -1 || endIndex === -1 || startIndex >= endIndex) {
+        console.error('JSONオブジェクトが見つからない:', {
+          startIndex,
+          endIndex,
+          content: cleanContent,
+        })
         throw new Error('有効なJSONオブジェクトが見つかりません')
       }
 
       cleanContent = cleanContent.substring(startIndex, endIndex + 1)
+      console.log('抽出されたJSON文字列:', cleanContent)
 
-      return JSON.parse(cleanContent)
+      const parsed = JSON.parse(cleanContent)
+      console.log('解析成功:', parsed)
+      return parsed
     } catch (error) {
-      console.error('JSON解析エラー:', error)
-      console.error('元のコンテンツ:', content)
+      console.error('JSON解析エラー詳細:', {
+        error: error instanceof Error ? error.message : error,
+        originalContent: content,
+        contentLength: content.length,
+        contentPreview: content.substring(0, 200) + '...',
+      })
       throw new Error(
         `JSONの解析に失敗しました: ${
           error instanceof Error ? error.message : '不明なエラー'
@@ -91,15 +107,19 @@ export class AIAnalyzer {
                 role: 'system',
                 content: `あなたは人事分析の専門家です。従業員の情報を分析して、性格特性、スキル、キャリア目標、強み、成長領域、各部署への適合度を評価してください。
 
-重要: 回答は必ず有効なJSONオブジェクトのみを返してください。マークダウンのコードブロック（\`\`\`json）や説明文は一切含めないでください。
+【重要な指示】
+1. 回答は必ず有効なJSONオブジェクトのみを返してください
+2. マークダウンのコードブロック（\`\`\`json）は使用しないでください
+3. 説明文や追加のテキストは一切含めないでください
+4. JSONオブジェクトの前後に余分な文字を入れないでください
 
-以下のJSON形式で返してください：
+以下の正確なJSON形式で返してください：
 {
-  "personalityTraits": ["特性1", "特性2", ...],
-  "skillCategories": ["カテゴリ1", "カテゴリ2", ...],
-  "careerGoals": ["目標1", "目標2", ...],
-  "strengths": ["強み1", "強み2", ...],
-  "developmentAreas": ["成長領域1", "成長領域2", ...],
+  "personalityTraits": ["特性1", "特性2"],
+  "skillCategories": ["カテゴリ1", "カテゴリ2"],
+  "careerGoals": ["目標1", "目標2"],
+  "strengths": ["強み1", "強み2"],
+  "developmentAreas": ["成長領域1", "成長領域2"],
   "departmentFit": {
     "営業部": 0.8,
     "開発部": 0.6,

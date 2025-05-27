@@ -16,11 +16,14 @@ class DataStore {
   private readonly RESULTS_DIR = path.join(this.DATA_DIR, 'results')
 
   constructor() {
-    this.ensureDirectories()
-    // 初期化を非同期で実行
-    this.initialize().catch((error) => {
-      console.error('データストア初期化エラー:', error)
-    })
+    // Vercel環境では書き込み権限が制限されているため、メモリ内のみで動作
+    if (process.env.NODE_ENV !== 'production') {
+      this.ensureDirectories()
+      // 初期化を非同期で実行
+      this.initialize().catch((error) => {
+        console.error('データストア初期化エラー:', error)
+      })
+    }
   }
 
   /**
@@ -44,10 +47,12 @@ class DataStore {
       departmentCount: data.departments.length,
     })
     this.data = data
-    // 非同期でファイルに保存（エラーは内部でハンドリング）
-    this.saveDataToFile().catch((error) => {
-      console.error('データ保存エラー:', error)
-    })
+    // 本番環境以外でのみファイル保存
+    if (process.env.NODE_ENV !== 'production') {
+      this.saveDataToFile().catch((error) => {
+        console.error('データ保存エラー:', error)
+      })
+    }
   }
 
   /**
@@ -90,7 +95,9 @@ class DataStore {
    */
   addProposal(proposal: TransferProposal): void {
     this.proposals.push(proposal)
-    this.saveProposalsToFile()
+    if (process.env.NODE_ENV !== 'production') {
+      this.saveProposalsToFile()
+    }
   }
 
   /**
@@ -98,7 +105,9 @@ class DataStore {
    */
   addProposals(proposals: TransferProposal[]): void {
     this.proposals.push(...proposals)
-    this.saveProposalsToFile()
+    if (process.env.NODE_ENV !== 'production') {
+      this.saveProposalsToFile()
+    }
   }
 
   /**
@@ -161,7 +170,9 @@ class DataStore {
    */
   addMetrics(metrics: PerformanceMetrics): void {
     this.metrics.push(metrics)
-    this.saveMetricsToFile()
+    if (process.env.NODE_ENV !== 'production') {
+      this.saveMetricsToFile()
+    }
   }
 
   /**
@@ -271,10 +282,13 @@ class DataStore {
    * 全データを初期化時に読み込み
    */
   async initialize(): Promise<void> {
-    await this.ensureDirectories()
-    await this.loadDataFromFile()
-    await this.loadProposalsFromFile()
-    await this.loadMetricsFromFile()
+    if (process.env.NODE_ENV !== 'production') {
+      await this.ensureDirectories()
+      await this.loadDataFromFile()
+      await this.loadProposalsFromFile()
+      await this.loadMetricsFromFile()
+    }
+    // 本番環境では何もしない（メモリ内のみ）
   }
 }
 
