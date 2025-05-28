@@ -252,19 +252,26 @@ export class AIAnalyzer {
   }
 
   /**
-   * 自然言語条件に基づいて従業員をフィルタリング
+   * 自然言語条件に基づいて候補者を検索・提案
    */
-  private async filterEmployeesByCondition(
+  async findCandidatesWithCondition(
     employees: Employee[],
+    departments: Department[],
     condition: string
-  ): Promise<Employee[]> {
+  ): Promise<{
+    candidates: Employee[]
+    reasoning: string
+    suggestions: string[]
+    clarificationQuestions?: string[]
+  }> {
     try {
       const prompt = `
-以下の従業員リストから、指定された条件に合致する従業員のIDを選択してください。
+あなたは人事分析の専門家です。以下の条件に基づいて適切な候補者を選出し、詳細な分析を提供してください。
 
-条件: ${condition}
+【条件】
+${condition}
 
-従業員リスト:
+【従業員リスト】
 ${employees
   .map(
     (emp) => `
@@ -280,12 +287,31 @@ ID: ${emp.id}
   )
   .join('\n')}
 
-条件に合致する従業員のIDのみを、以下のJSON形式で返してください：
+【部署情報】
+${departments
+  .map(
+    (dept) => `
+部署名: ${dept.name}
+説明: ${dept.description}
+必要スキル: ${dept.requiredSkills.join(', ')}
+現在のメンバー数: ${dept.currentMembers.length}名
+---`
+  )
+  .join('\n')}
+
+以下のJSON形式で回答してください：
 {
-  "selectedEmployeeIds": ["E001", "E002", ...]
+  "selectedEmployeeIds": ["候補者のID1", "候補者のID2", ...],
+  "reasoning": "候補者選出の詳細な理由（200文字程度）",
+  "suggestions": ["追加の提案1", "追加の提案2", ...],
+  "clarificationQuestions": ["確認したい質問1", "確認したい質問2", ...]
 }
 
-重要: 回答は必ず有効なJSONオブジェクトのみを返してください。説明文は含めないでください。
+重要: 
+- 条件を正確に解釈し、適切な候補者を選出してください
+- 候補者が見つからない場合は空配列を返してください
+- 条件が曖昧な場合は clarificationQuestions で確認事項を提示してください
+- 回答は必ず有効なJSONオブジェクトのみを返してください
 `
 
       const response = await openai.chat.completions.create({
@@ -294,7 +320,7 @@ ID: ${emp.id}
           {
             role: 'system',
             content:
-              'あなたは人事分析の専門家です。指定された条件に基づいて適切な従業員を選択してください。',
+              'あなたは人事分析の専門家です。条件に基づいて適切な候補者を選出し、詳細な分析を提供してください。',
           },
           {
             role: 'user',
@@ -302,22 +328,52 @@ ID: ${emp.id}
           },
         ],
         temperature: 0.2,
-        max_tokens: 1000,
+        max_tokens: 1500,
       })
 
       const content = response.choices[0]?.message?.content
       if (!content) {
-        throw new Error('従業員フィルタリングの応答が空です')
+        throw new Error('候補者検索の応答が空です')
       }
 
       const result = this.extractJSON(content)
       const selectedIds = result.selectedEmployeeIds || []
+      const candidates = employees.filter((emp) => selectedIds.includes(emp.id))
 
       console.log(
-        `自然言語条件「${condition}」により ${selectedIds.length}名の従業員を選択`
+        `条件「${condition}」により ${candidates.length}名の候補者を選出`
       )
 
-      return employees.filter((emp) => selectedIds.includes(emp.id))
+      return {
+        candidates,
+        reasoning: result.reasoning || '候補者を選出しました。',
+        suggestions: result.suggestions || [],
+        clarificationQuestions: result.clarificationQuestions,
+      }
+    } catch (error) {
+      console.error('候補者検索エラー:', error)
+      throw new Error(
+        `候補者の検索に失敗しました: ${
+          error instanceof Error ? error.message : '不明なエラー'
+        }`
+      )
+    }
+  }
+
+  /**
+   * 自然言語条件に基づいて従業員をフィルタリング（後方互換性のため）
+   */
+  private async filterEmployeesByCondition(
+    employees: Employee[],
+    condition: string
+  ): Promise<Employee[]> {
+    try {
+      const result = await this.findCandidatesWithCondition(
+        employees,
+        [], // 部署情報は簡易版では不要
+        condition
+      )
+      return result.candidates
     } catch (error) {
       console.error('従業員フィルタリングエラー:', error)
       console.log('条件指定を無視して全従業員を対象とします')
@@ -326,7 +382,7 @@ ID: ${emp.id}
   }
 
   /**
-   * 異動提案を生成
+   * 異動提案を生成（従来の機能）
    */
   async generateTransferProposals(
     employees: Employee[],
@@ -427,7 +483,7 @@ ID: ${emp.id}
   }
 
   /**
-   * 個別従業員の異動提案を生成
+   * 個別従業員の異動提案を生成（従来の機能）
    */
   private async generateEmployeeTransferProposal(
     employee: Employee,
@@ -481,7 +537,7 @@ ID: ${emp.id}
   }
 
   /**
-   * 異動理由を生成
+   * 異動理由を生成（従来の機能）
    */
   private async generateTransferReasoning(
     employee: Employee,
@@ -538,6 +594,214 @@ ID: ${emp.id}
     } catch (error) {
       console.error('異動理由生成エラー:', error)
       return `${employee.name}さんのスキルと適性を考慮した結果、${toDept}への異動が適切と判断されました。`
+    }
+  }
+
+  /**
+   * 特定の部署への異動提案を生成
+   */
+  async generateTargetedTransferProposals(
+    candidates: Employee[],
+    targetDepartment: string,
+    condition: string,
+    options: AnalysisRequest = {}
+  ): Promise<TransferProposal[]> {
+    const proposals: TransferProposal[] = []
+
+    for (const employee of candidates) {
+      try {
+        // 現在の部署と同じ場合はスキップ
+        if (employee.department === targetDepartment) {
+          console.log(
+            `${employee.name}は既に${targetDepartment}に所属しています`
+          )
+          continue
+        }
+
+        const employeeAnalysis = await this.analyzeEmployee(employee)
+
+        // 対象部署への適合度を確認
+        const targetFitScore =
+          employeeAnalysis.departmentFit[targetDepartment] || 0
+
+        // 異動理由を生成
+        const reasoning = await this.generateTargetedTransferReasoning(
+          employee,
+          employeeAnalysis,
+          targetDepartment,
+          condition,
+          options
+        )
+
+        const proposal: TransferProposal = {
+          employeeId: employee.id,
+          employeeName: employee.name,
+          fromDepartment: employee.department,
+          toDepartment: targetDepartment,
+          confidenceScore: Math.max(targetFitScore, 0.6), // 最低0.6の信頼度
+          reasoning,
+          aiModel: 'openai',
+          processingTime: 0,
+          timestamp: new Date(),
+        }
+
+        proposals.push(proposal)
+        console.log(`✓ ${employee.name}の${targetDepartment}への異動提案を生成`)
+      } catch (error) {
+        console.error(`${employee.name}の提案生成エラー:`, error)
+      }
+    }
+
+    return proposals
+  }
+
+  /**
+   * 対象部署への異動理由を生成
+   */
+  private async generateTargetedTransferReasoning(
+    employee: Employee,
+    analysis: EmployeeAnalysis,
+    targetDepartment: string,
+    condition: string,
+    options: AnalysisRequest
+  ): Promise<string> {
+    try {
+      const prompt = `
+従業員情報：
+- 名前: ${employee.name}
+- 現在の部署: ${employee.department}
+- 役職: ${employee.position}
+- 性格: ${employee.personality}
+- 経験・スキル: ${employee.experience}
+- 希望・目標: ${employee.aspirations}
+- 保有スキル: ${employee.skills.join(', ')}
+
+分析結果：
+- 強み: ${analysis.strengths.join(', ')}
+- 成長領域: ${analysis.developmentAreas.join(', ')}
+- キャリア目標: ${analysis.careerGoals.join(', ')}
+
+異動条件: ${condition}
+提案: ${employee.department} → ${targetDepartment}への異動
+
+この異動提案の理由を、指定された条件と従業員の適性を踏まえて200文字程度で説明してください。
+なぜこの従業員が条件に適合し、${targetDepartment}で活躍できるかを具体的に述べてください。
+`
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'あなたは人事コンサルタントです。指定された条件に基づく異動理由を分かりやすく説明してください。',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.4,
+        max_tokens: 300,
+      })
+
+      return (
+        response.choices[0]?.message?.content ||
+        `${employee.name}さんは指定された条件に適合し、${targetDepartment}での活躍が期待されます。`
+      )
+    } catch (error) {
+      console.error('異動理由生成エラー:', error)
+      return `${employee.name}さんは指定された条件に適合し、${targetDepartment}での活躍が期待されます。`
+    }
+  }
+
+  /**
+   * 対話形式での候補者絞り込み
+   */
+  async refineCandidate(
+    candidates: Employee[],
+    originalCondition: string,
+    userFeedback: string
+  ): Promise<{
+    refinedCandidates: Employee[]
+    reasoning: string
+    nextQuestions?: string[]
+  }> {
+    try {
+      const prompt = `
+あなたは人事分析の専門家です。ユーザーのフィードバックに基づいて候補者を絞り込んでください。
+
+【元の条件】
+${originalCondition}
+
+【現在の候補者】
+${candidates
+  .map(
+    (emp) => `
+ID: ${emp.id}
+名前: ${emp.name}
+部署: ${emp.department}
+役職: ${emp.position}
+性格: ${emp.personality}
+経験・スキル: ${emp.experience}
+希望・目標: ${emp.aspirations}
+保有スキル: ${emp.skills.join(', ')}
+---`
+  )
+  .join('\n')}
+
+【ユーザーのフィードバック】
+${userFeedback}
+
+フィードバックを踏まえて候補者を絞り込み、以下のJSON形式で回答してください：
+{
+  "refinedEmployeeIds": ["絞り込み後の候補者ID1", "候補者ID2", ...],
+  "reasoning": "絞り込みの理由（150文字程度）",
+  "nextQuestions": ["さらに確認したい質問1", "質問2", ...]
+}
+
+重要: 回答は必ず有効なJSONオブジェクトのみを返してください。
+`
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'あなたは人事分析の専門家です。ユーザーのフィードバックに基づいて適切に候補者を絞り込んでください。',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.2,
+        max_tokens: 1000,
+      })
+
+      const content = response.choices[0]?.message?.content
+      if (!content) {
+        throw new Error('候補者絞り込みの応答が空です')
+      }
+
+      const result = this.extractJSON(content)
+      const refinedIds = result.refinedEmployeeIds || []
+      const refinedCandidates = candidates.filter((emp) =>
+        refinedIds.includes(emp.id)
+      )
+
+      return {
+        refinedCandidates,
+        reasoning: result.reasoning || '候補者を絞り込みました。',
+        nextQuestions: result.nextQuestions,
+      }
+    } catch (error) {
+      console.error('候補者絞り込みエラー:', error)
+      return {
+        refinedCandidates: candidates,
+        reasoning: 'フィードバックの処理中にエラーが発生しました。',
+      }
     }
   }
 
