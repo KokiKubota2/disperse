@@ -8,6 +8,7 @@ export interface Employee {
   experience: string
   aspirations: string
   skills: string[]
+  relationships: string // 人間関係についての自由記入欄
   // Excelから読み込んだ生データ
   rawData: Record<string, any>
 }

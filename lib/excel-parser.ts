@@ -15,6 +15,14 @@ const COLUMN_MAPPING = {
   personality: ['性格・特徴', '性格', 'personality', '特徴'],
   experience: ['経歴・スキル', '経歴', 'experience', 'スキル', 'skills'],
   aspirations: ['希望・目標', '希望', 'aspirations', '目標', 'goals'],
+  relationships: [
+    '人間関係',
+    '人間関係・備考',
+    'relationships',
+    '備考',
+    '特記事項',
+    '注意事項',
+  ],
 }
 
 /**
@@ -71,6 +79,7 @@ function convertRowToEmployee(
     const personality = row[columnMapping.personality]?.toString() || ''
     const experience = row[columnMapping.experience]?.toString() || ''
     const aspirations = row[columnMapping.aspirations]?.toString() || ''
+    const relationships = row[columnMapping.relationships]?.toString() || ''
 
     const skills = parseSkills(experience)
 
@@ -82,6 +91,7 @@ function convertRowToEmployee(
       personality,
       experience,
       aspirations,
+      relationships,
       skills,
       rawData: { ...row },
     }
@@ -352,6 +362,30 @@ export function generateSampleData(): ProcessedData {
     '新しい分野でのキャリアチェンジを検討している。',
   ]
 
+  // 人間関係パターン（冗談的な内容を含む）
+  const relationshipPatterns = [
+    '', // 空白（特に問題なし）
+    '',
+    '',
+    '',
+    '', // 大部分は空白にする
+    '田中太郎さんとは過去に揉めたことがあるので、同じ部署は不可能です。',
+    '佐藤花子さんとは過去に交際関係にあったので、同じ部署は避けてください。',
+    '山田一郎さんとは犬猿の仲です。会議でも意見が対立しがちです。',
+    '鈴木美咲さんとは元同僚で、お互いライバル意識が強すぎます。',
+    '高橋健太さんとはランチの好みが合わず、毎日口論になります。',
+    '渡辺由美さんとは音楽の趣味が正反対で、休憩時間が気まずいです。',
+    '伊藤大輔さんとは野球チームが違うので、シーズン中は険悪になります。',
+    '中村恵子さんとはコーヒーの淹れ方で大喧嘩したことがあります。',
+    '小林翔太さんとは駐車場の件で揉めて以来、気まずい関係です。',
+    '加藤真理さんとは元カップルで、周りが気を使ってしまいます。',
+    '吉田拓也さんとは学生時代からの腐れ縁で、仕事に集中できません。',
+    '松本智子さんとはお弁当の匂いで毎回文句を言われます。',
+    '井上雄一さんとは政治の話で大激論になったことがあります。',
+    '木村裕子さんとは元上司と部下の関係で、今でも敬語が抜けません。',
+    '林慎一さんとはゲームの対戦で負けて以来、恨まれています。',
+  ]
+
   // 名前リスト（姓）
   const surnames = [
     '田中',
@@ -492,6 +526,12 @@ export function generateSampleData(): ProcessedData {
       ', '
     )}, ${department}経験${experienceYears}年`
 
+    // 人間関係をランダムに選択
+    const relationship =
+      relationshipPatterns[
+        Math.floor(Math.random() * relationshipPatterns.length)
+      ]
+
     employees.push({
       id: `E${String(i).padStart(3, '0')}`,
       name,
@@ -500,6 +540,7 @@ export function generateSampleData(): ProcessedData {
       personality,
       experience,
       aspirations: aspiration,
+      relationships: relationship,
       skills: selectedSkills,
       rawData: {},
     })

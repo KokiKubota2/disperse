@@ -382,6 +382,536 @@ ${departments
   }
 
   /**
+   * 人間関係制約を解析
+   */
+  private analyzeRelationshipConstraints(
+    employee: Employee,
+    employees: Employee[]
+  ): {
+    conflicts: string[]
+    warnings: string[]
+    recommendations: string[]
+  } {
+    const conflicts: string[] = []
+    const warnings: string[] = []
+    const recommendations: string[] = []
+
+    if (!employee.relationships || employee.relationships.trim() === '') {
+      return { conflicts, warnings, recommendations }
+    }
+
+    const relationshipText = employee.relationships.toLowerCase()
+
+    // 他の従業員の名前を検索して制約を特定
+    employees.forEach((otherEmployee) => {
+      if (otherEmployee.id === employee.id) return
+
+      const otherName = otherEmployee.name
+      if (relationshipText.includes(otherName)) {
+        // 深刻な制約（同じ部署不可）
+        if (
+          relationshipText.includes('不可能') ||
+          relationshipText.includes('避けて') ||
+          relationshipText.includes('犬猿の仲') ||
+          relationshipText.includes('揉めた')
+        ) {
+          conflicts.push(
+            `${otherName}さんとの関係により、同じ部署への配置は避けるべきです`
+          )
+        }
+        // 軽微な制約（注意が必要）
+        else if (
+          relationshipText.includes('気まずい') ||
+          relationshipText.includes('対立') ||
+          relationshipText.includes('口論') ||
+          relationshipText.includes('険悪')
+        ) {
+          warnings.push(`${otherName}さんとの関係に注意が必要です`)
+        }
+        // その他の関係性
+        else {
+          recommendations.push(
+            `${otherName}さんとの関係性を考慮した配置を検討してください`
+          )
+        }
+      }
+    })
+
+    return { conflicts, warnings, recommendations }
+  }
+
+  /**
+   * 人間関係制約を考慮した異動提案を生成
+   */
+  async generateTransferProposalsWithRelationships(
+    employees: Employee[],
+    departments: Department[],
+    options: AnalysisRequest = {}
+  ): Promise<TransferProposal[]> {
+    const startTime = Date.now()
+    const proposals: TransferProposal[] = []
+    let successCount = 0
+    let errorCount = 0
+
+    try {
+      // 分析対象の従業員を決定
+      let targetEmployees = options.employeeIds
+        ? employees.filter((emp) => options.employeeIds!.includes(emp.id))
+        : employees
+
+      // 自然言語条件が指定されている場合、フィルタリングを実行
+      if (
+        options.naturalLanguageCondition &&
+        options.naturalLanguageCondition.trim()
+      ) {
+        console.log(
+          `自然言語条件でフィルタリング: "${options.naturalLanguageCondition}"`
+        )
+        targetEmployees = await this.filterEmployeesByCondition(
+          targetEmployees,
+          options.naturalLanguageCondition
+        )
+      }
+
+      console.log(
+        `人間関係を考慮した異動提案生成開始: ${targetEmployees.length}名の従業員を分析`
+      )
+
+      // 各従業員の分析と提案生成
+      for (let i = 0; i < targetEmployees.length; i++) {
+        const employee = targetEmployees[i]
+        const progressPercent = Math.round(
+          ((i + 1) / targetEmployees.length) * 100
+        )
+
+        try {
+          console.log(
+            `[${i + 1}/${targetEmployees.length}] 従業員 ${employee.name} (${
+              employee.id
+            }) の分析開始（人間関係制約を含む）`
+          )
+
+          const employeeAnalysis = await this.analyzeEmployee(employee)
+          const relationshipConstraints = this.analyzeRelationshipConstraints(
+            employee,
+            employees
+          )
+
+          const proposal =
+            await this.generateEmployeeTransferProposalWithRelationships(
+              employee,
+              employeeAnalysis,
+              relationshipConstraints,
+              departments,
+              employees,
+              options
+            )
+
+          if (proposal) {
+            proposals.push(proposal)
+            successCount++
+            console.log(
+              `✓ 従業員 ${employee.name} の提案生成完了（人間関係制約考慮済み） (進行: ${progressPercent}%)`
+            )
+          } else {
+            console.log(
+              `- 従業員 ${employee.name} は適切な異動先なし（人間関係制約により） (進行: ${progressPercent}%)`
+            )
+          }
+        } catch (error) {
+          errorCount++
+          console.error(
+            `✗ 従業員 ${employee.name} (${employee.id}) の提案生成エラー:`,
+            {
+              error: error instanceof Error ? error.message : error,
+              progress: `${i + 1}/${targetEmployees.length}`,
+            }
+          )
+          // 個別のエラーは記録するが、全体の処理は続行
+        }
+      }
+
+      const processingTime = Date.now() - startTime
+      console.log(`人間関係を考慮した異動提案生成完了:`, {
+        totalEmployees: targetEmployees.length,
+        successfulProposals: proposals.length,
+        successCount,
+        errorCount,
+        processingTime: `${processingTime}ms`,
+      })
+
+      return proposals
+    } catch (error) {
+      console.error('人間関係を考慮した異動提案生成エラー:', error)
+      throw new Error(
+        `異動提案の生成に失敗しました: ${
+          error instanceof Error ? error.message : '不明なエラー'
+        }`
+      )
+    }
+  }
+
+  /**
+   * 人間関係制約を考慮した個別従業員の異動提案を生成
+   */
+  private async generateEmployeeTransferProposalWithRelationships(
+    employee: Employee,
+    analysis: EmployeeAnalysis,
+    relationshipConstraints: {
+      conflicts: string[]
+      warnings: string[]
+      recommendations: string[]
+    },
+    departments: Department[],
+    allEmployees: Employee[],
+    options: AnalysisRequest
+  ): Promise<TransferProposal | null> {
+    const startTime = Date.now()
+
+    try {
+      // 現在の部署以外で適合度の高い部署を特定
+      const currentDept = employee.department
+      const candidateDepartments = Object.entries(analysis.departmentFit)
+        .filter(([deptName, score]) => deptName !== currentDept && score > 0.6)
+        .sort(([, a], [, b]) => b - a)
+
+      if (candidateDepartments.length === 0) {
+        return null // 適切な異動先がない
+      }
+
+      // 人間関係制約を考慮して部署を評価
+      const evaluatedDepartments = candidateDepartments.map(
+        ([deptName, score]) => {
+          let adjustedScore = score
+          let constraintIssues: string[] = []
+
+          // その部署にいる従業員との関係をチェック
+          const deptEmployees = allEmployees.filter(
+            (emp) => emp.department === deptName
+          )
+
+          deptEmployees.forEach((deptEmployee) => {
+            const employeeName = employee.name
+            const deptEmployeeName = deptEmployee.name
+
+            // 対象従業員の人間関係制約をチェック
+            if (
+              employee.relationships &&
+              employee.relationships.toLowerCase().includes(deptEmployeeName)
+            ) {
+              const relationshipText = employee.relationships.toLowerCase()
+              if (
+                relationshipText.includes('不可能') ||
+                relationshipText.includes('避けて') ||
+                relationshipText.includes('犬猿の仲') ||
+                relationshipText.includes('揉めた')
+              ) {
+                adjustedScore = 0 // 完全に除外
+                constraintIssues.push(
+                  `${deptEmployeeName}さんとの関係により同部署配置不可`
+                )
+              } else if (
+                relationshipText.includes('気まずい') ||
+                relationshipText.includes('対立') ||
+                relationshipText.includes('口論') ||
+                relationshipText.includes('険悪')
+              ) {
+                adjustedScore *= 0.7 // スコアを下げる
+                constraintIssues.push(
+                  `${deptEmployeeName}さんとの関係に注意が必要`
+                )
+              }
+            }
+
+            // 部署内従業員の人間関係制約もチェック
+            if (
+              deptEmployee.relationships &&
+              deptEmployee.relationships.toLowerCase().includes(employeeName)
+            ) {
+              const relationshipText = deptEmployee.relationships.toLowerCase()
+              if (
+                relationshipText.includes('不可能') ||
+                relationshipText.includes('避けて') ||
+                relationshipText.includes('犬猿の仲') ||
+                relationshipText.includes('揉めた')
+              ) {
+                adjustedScore = 0 // 完全に除外
+                constraintIssues.push(
+                  `${deptEmployeeName}さんからの制約により同部署配置不可`
+                )
+              } else if (
+                relationshipText.includes('気まずい') ||
+                relationshipText.includes('対立') ||
+                relationshipText.includes('口論') ||
+                relationshipText.includes('険悪')
+              ) {
+                adjustedScore *= 0.7 // スコアを下げる
+                constraintIssues.push(
+                  `${deptEmployeeName}さんからの制約により注意が必要`
+                )
+              }
+            }
+          })
+
+          return {
+            department: deptName,
+            originalScore: score,
+            adjustedScore,
+            constraintIssues,
+          }
+        }
+      )
+
+      // 制約後も有効な部署を選択
+      const validDepartments = evaluatedDepartments
+        .filter((dept) => dept.adjustedScore > 0.3)
+        .sort((a, b) => b.adjustedScore - a.adjustedScore)
+
+      if (validDepartments.length === 0) {
+        return null // 人間関係制約により適切な異動先がない
+      }
+
+      const bestDepartment = validDepartments[0]
+      const targetDepartment = bestDepartment.department
+      const confidenceScore = bestDepartment.adjustedScore
+
+      // 人間関係制約を考慮した異動理由を生成
+      const reasoning = await this.generateTransferReasoningWithRelationships(
+        employee,
+        analysis,
+        relationshipConstraints,
+        bestDepartment,
+        currentDept,
+        targetDepartment,
+        options
+      )
+
+      const processingTime = Date.now() - startTime
+
+      return {
+        employeeId: employee.id,
+        employeeName: employee.name,
+        fromDepartment: currentDept,
+        toDepartment: targetDepartment,
+        confidenceScore: Math.round(confidenceScore * 100) / 100,
+        reasoning,
+        aiModel: 'openai',
+        processingTime,
+        timestamp: new Date(),
+      }
+    } catch (error) {
+      console.error(
+        `従業員 ${employee.id} の人間関係制約考慮提案生成エラー:`,
+        error
+      )
+      return null
+    }
+  }
+
+  /**
+   * 人間関係制約を考慮した異動理由を生成
+   */
+  private async generateTransferReasoningWithRelationships(
+    employee: Employee,
+    analysis: EmployeeAnalysis,
+    relationshipConstraints: {
+      conflicts: string[]
+      warnings: string[]
+      recommendations: string[]
+    },
+    departmentEvaluation: {
+      department: string
+      originalScore: number
+      adjustedScore: number
+      constraintIssues: string[]
+    },
+    fromDept: string,
+    toDept: string,
+    options: AnalysisRequest
+  ): Promise<string> {
+    if (!options.options?.includeReasons) {
+      let baseReason = `${employee.name}さんのスキルと適性を考慮した結果、${toDept}への異動が適切と判断されました。`
+
+      if (departmentEvaluation.constraintIssues.length > 0) {
+        baseReason += ` 人間関係も考慮済みです。`
+      }
+
+      return baseReason
+    }
+
+    try {
+      const relationshipInfo = employee.relationships
+        ? `\n- 人間関係情報: ${employee.relationships}`
+        : '\n- 人間関係情報: 特記事項なし'
+
+      const constraintInfo =
+        relationshipConstraints.conflicts.length > 0 ||
+        relationshipConstraints.warnings.length > 0
+          ? `\n- 人間関係制約: ${[
+              ...relationshipConstraints.conflicts,
+              ...relationshipConstraints.warnings,
+            ].join(', ')}`
+          : '\n- 人間関係制約: なし'
+
+      const departmentConstraintInfo =
+        departmentEvaluation.constraintIssues.length > 0
+          ? `\n- ${toDept}での制約: ${departmentEvaluation.constraintIssues.join(
+              ', '
+            )}`
+          : `\n- ${toDept}での制約: なし`
+
+      const prompt = `
+従業員情報：
+- 名前: ${employee.name}
+- 現在の部署: ${fromDept}
+- 役職: ${employee.position}
+- 性格: ${employee.personality}
+- 経験・スキル: ${employee.experience}
+- 希望・目標: ${employee.aspirations}${relationshipInfo}
+
+分析結果：
+- 強み: ${analysis.strengths.join(', ')}
+- 成長領域: ${analysis.developmentAreas.join(', ')}
+- キャリア目標: ${analysis.careerGoals.join(', ')}
+
+人間関係の考慮：${constraintInfo}${departmentConstraintInfo}
+
+適合度スコア：
+- 元のスコア: ${Math.round(departmentEvaluation.originalScore * 100)}%
+- 人間関係考慮後: ${Math.round(departmentEvaluation.adjustedScore * 100)}%
+
+提案: ${fromDept} → ${toDept}への異動
+
+この異動提案の理由を、従業員の成長とキャリア目標の実現、組織への貢献、そして人間関係の配慮の観点から250文字程度で説明してください。
+人間関係の制約がある場合は、それをどのように考慮したかも含めてください。
+`
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'あなたは人事コンサルタントです。従業員の異動理由を、人間関係の配慮も含めて分かりやすく説明してください。',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.4,
+        max_tokens: 400,
+      })
+
+      return (
+        response.choices[0]?.message?.content ||
+        `${employee.name}さんのスキルと適性、人間関係を総合的に考慮した結果、${toDept}への異動が適切と判断されました。`
+      )
+    } catch (error) {
+      console.error('人間関係考慮異動理由生成エラー:', error)
+      return `${employee.name}さんのスキルと適性、人間関係を総合的に考慮した結果、${toDept}への異動が適切と判断されました。`
+    }
+  }
+
+  /**
+   * 従業員分析用プロンプトを構築
+   */
+  private buildEmployeeAnalysisPrompt(employee: Employee): string {
+    return `
+以下の従業員情報を分析してください：
+
+【基本情報】
+- 名前: ${employee.name}
+- 部署: ${employee.department}
+- 役職: ${employee.position}
+
+【性格・特徴】
+${employee.personality}
+
+【経歴・スキル】
+${employee.experience}
+
+【希望・目標】
+${employee.aspirations}
+
+【保有スキル】
+${employee.skills.join(', ')}
+
+この情報から、以下の部署への適合度を0-1のスコアで評価してください：
+営業部, 開発部, 人事部, マーケティング部, 経理部, 総務部, 企画部, システム部, 品質管理部, 法務部
+`
+  }
+
+  /**
+   * 部署分析用プロンプトを構築
+   */
+  private buildDepartmentAnalysisPrompt(
+    department: Department,
+    employees: Employee[]
+  ): string {
+    const employeeProfiles = employees
+      .map((emp) => `- ${emp.name} (${emp.position}): ${emp.skills.join(', ')}`)
+      .join('\n')
+
+    return `
+以下の部署情報を分析してください：
+
+【部署名】
+${department.name}
+
+【部署説明】
+${department.description}
+
+【現在の必要スキル】
+${department.requiredSkills.join(', ')}
+
+【所属メンバー】
+${employeeProfiles}
+
+この情報から、部署の特徴と要件を分析してください。
+`
+  }
+
+  /**
+   * パフォーマンスメトリクスを生成
+   */
+  generateMetrics(
+    proposals: TransferProposal[],
+    totalProcessingTime: number,
+    tokenUsage: { prompt: number; completion: number; total: number },
+    errors: number = 0
+  ): PerformanceMetrics {
+    const successfulProposals = proposals.length
+    const totalAttempts = successfulProposals + errors
+    const successRate =
+      totalAttempts > 0 ? successfulProposals / totalAttempts : 0
+
+    // OpenAI料金計算 (概算)
+    const inputCostPer1K = 0.00015 // $0.00015 per 1K input tokens
+    const outputCostPer1K = 0.0006 // $0.0006 per 1K output tokens
+    const estimatedCost =
+      (tokenUsage.prompt / 1000) * inputCostPer1K +
+      (tokenUsage.completion / 1000) * outputCostPer1K
+
+    return {
+      aiAnalysis: {
+        responseTime: totalProcessingTime,
+        tokenUsage,
+        cost: estimatedCost,
+        successRate,
+        errorCount: errors,
+      },
+      systemMetrics: {
+        fileProcessingTime: 0, // AI分析では該当なし
+        memoryUsage: process.memoryUsage().heapUsed / 1024 / 1024, // MB
+        dataSize: proposals.length,
+      },
+      timestamp: new Date(),
+      aiModel: 'openai',
+    }
+  }
+
+  /**
    * 異動提案を生成（従来の機能）
    */
   async generateTransferProposals(
@@ -802,104 +1332,6 @@ ${userFeedback}
         refinedCandidates: candidates,
         reasoning: 'フィードバックの処理中にエラーが発生しました。',
       }
-    }
-  }
-
-  /**
-   * 従業員分析用プロンプトを構築
-   */
-  private buildEmployeeAnalysisPrompt(employee: Employee): string {
-    return `
-以下の従業員情報を分析してください：
-
-【基本情報】
-- 名前: ${employee.name}
-- 部署: ${employee.department}
-- 役職: ${employee.position}
-
-【性格・特徴】
-${employee.personality}
-
-【経歴・スキル】
-${employee.experience}
-
-【希望・目標】
-${employee.aspirations}
-
-【保有スキル】
-${employee.skills.join(', ')}
-
-この情報から、以下の部署への適合度を0-1のスコアで評価してください：
-営業部, 開発部, 人事部, マーケティング部, 経理部, 総務部, 企画部, システム部, 品質管理部, 法務部
-`
-  }
-
-  /**
-   * 部署分析用プロンプトを構築
-   */
-  private buildDepartmentAnalysisPrompt(
-    department: Department,
-    employees: Employee[]
-  ): string {
-    const employeeProfiles = employees
-      .map((emp) => `- ${emp.name} (${emp.position}): ${emp.skills.join(', ')}`)
-      .join('\n')
-
-    return `
-以下の部署情報を分析してください：
-
-【部署名】
-${department.name}
-
-【部署説明】
-${department.description}
-
-【現在の必要スキル】
-${department.requiredSkills.join(', ')}
-
-【所属メンバー】
-${employeeProfiles}
-
-この情報から、部署の特徴と要件を分析してください。
-`
-  }
-
-  /**
-   * パフォーマンスメトリクスを生成
-   */
-  generateMetrics(
-    proposals: TransferProposal[],
-    totalProcessingTime: number,
-    tokenUsage: { prompt: number; completion: number; total: number },
-    errors: number = 0
-  ): PerformanceMetrics {
-    const successfulProposals = proposals.length
-    const totalAttempts = successfulProposals + errors
-    const successRate =
-      totalAttempts > 0 ? successfulProposals / totalAttempts : 0
-
-    // OpenAI料金計算 (概算)
-    const inputCostPer1K = 0.00015 // $0.00015 per 1K input tokens
-    const outputCostPer1K = 0.0006 // $0.0006 per 1K output tokens
-    const estimatedCost =
-      (tokenUsage.prompt / 1000) * inputCostPer1K +
-      (tokenUsage.completion / 1000) * outputCostPer1K
-
-    return {
-      aiAnalysis: {
-        responseTime: totalProcessingTime,
-        tokenUsage,
-        cost: estimatedCost,
-        successRate,
-        errorCount: errors,
-      },
-      systemMetrics: {
-        fileProcessingTime: 0, // AI分析では該当なし
-        memoryUsage: process.memoryUsage().heapUsed / 1024 / 1024, // MB
-        dataSize: proposals.length,
-      },
-      timestamp: new Date(),
-      aiModel: 'openai',
     }
   }
 }

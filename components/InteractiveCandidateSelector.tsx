@@ -173,7 +173,6 @@ export default function InteractiveCandidateSelector({
     setIsProcessing(true)
 
     try {
-      // API経由で異動提案を生成
       const response = await fetch('/api/candidates', {
         method: 'POST',
         headers: {
@@ -193,28 +192,61 @@ export default function InteractiveCandidateSelector({
       const result = await response.json()
 
       if (!result.success) {
-        throw new Error(result.error || '異動提案生成に失敗しました')
+        throw new Error(result.error || '異動提案の生成に失敗しました')
       }
 
-      // 提案を保存
       setProposals(result.proposals)
       onProposalsGenerated(result.proposals)
-
-      // 完了メッセージを追加
-      const completionStep: ConversationStep = {
-        type: 'ai',
-        content: `${currentCandidates.length}名の候補者について${result.proposals.length}件の異動提案を生成しました。`,
-      }
-      setConversation([...conversation, completionStep])
     } catch (error) {
-      console.error('提案生成エラー:', error)
-      const errorStep: ConversationStep = {
-        type: 'ai',
-        content: `申し訳ございません。異動提案の生成中にエラーが発生しました: ${
+      console.error('異動提案生成エラー:', error)
+      alert(
+        `異動提案の生成中にエラーが発生しました: ${
           error instanceof Error ? error.message : '不明なエラー'
-        }`,
+        }`
+      )
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  // 従来の異動提案を生成（人間関係制約なし）
+  const generateProposalsWithoutRelationships = async () => {
+    if (currentCandidates.length === 0) return
+
+    setIsProcessing(true)
+
+    try {
+      const response = await fetch('/api/candidates', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'generateProposalsWithoutRelationships',
+          condition: originalCondition,
+          candidates: currentCandidates.map((c) => c.id),
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
       }
-      setConversation([...conversation, errorStep])
+
+      const result = await response.json()
+
+      if (!result.success) {
+        throw new Error(result.error || '異動提案の生成に失敗しました')
+      }
+
+      setProposals(result.proposals)
+      onProposalsGenerated(result.proposals)
+    } catch (error) {
+      console.error('従来の異動提案生成エラー:', error)
+      alert(
+        `従来の異動提案の生成中にエラーが発生しました: ${
+          error instanceof Error ? error.message : '不明なエラー'
+        }`
+      )
     } finally {
       setIsProcessing(false)
     }
@@ -364,6 +396,18 @@ export default function InteractiveCandidateSelector({
                 </Button>
 
                 <Button
+                  onClick={generateProposalsWithoutRelationships}
+                  disabled={isProcessing || currentCandidates.length === 0}
+                  className='flex items-center gap-2'>
+                  {isProcessing ? (
+                    <Loader2 className='h-4 w-4 animate-spin' />
+                  ) : (
+                    <CheckCircle className='h-4 w-4' />
+                  )}
+                  従来の異動提案を生成
+                </Button>
+
+                <Button
                   onClick={reset}
                   disabled={isProcessing}
                   variant='ghost'
@@ -385,14 +429,52 @@ export default function InteractiveCandidateSelector({
                   現在の候補者 ({currentCandidates.length}名)
                 </span>
               </div>
-              <div className='flex flex-wrap gap-1'>
+              <div className='space-y-3'>
                 {currentCandidates.map((candidate) => (
-                  <Badge
+                  <div
                     key={candidate.id}
-                    variant='outline'
-                    className='text-xs'>
-                    {candidate.name} ({candidate.department})
-                  </Badge>
+                    className='bg-white p-4 rounded-lg border border-blue-200'>
+                    <div className='flex items-center justify-between mb-2'>
+                      <div className='flex items-center gap-2'>
+                        <span className='font-medium text-blue-800'>
+                          {candidate.name}
+                        </span>
+                        <Badge variant='secondary' className='text-xs'>
+                          {candidate.department}
+                        </Badge>
+                        <Badge variant='outline' className='text-xs'>
+                          {candidate.position}
+                        </Badge>
+                      </div>
+                      <span className='text-sm text-gray-500'>
+                        ID: {candidate.id}
+                      </span>
+                    </div>
+                    <div className='text-sm text-gray-600 space-y-1'>
+                      <p>
+                        <strong>性格:</strong> {candidate.personality}
+                      </p>
+                      <p>
+                        <strong>スキル:</strong> {candidate.skills.join(', ')}
+                      </p>
+                      <p>
+                        <strong>希望:</strong> {candidate.aspirations}
+                      </p>
+                      {candidate.relationships &&
+                        candidate.relationships.trim() !== '' && (
+                          <div className='mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded'>
+                            <p className='text-sm'>
+                              <strong className='text-yellow-800'>
+                                人間関係:
+                              </strong>{' '}
+                              <span className='text-yellow-700'>
+                                {candidate.relationships}
+                              </span>
+                            </p>
+                          </div>
+                        )}
+                    </div>
+                  </div>
                 ))}
               </div>
             </CardContent>

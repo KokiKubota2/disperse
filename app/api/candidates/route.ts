@@ -84,6 +84,57 @@ export async function POST(request: NextRequest) {
             condition
           )
         } else {
+          // 人間関係を考慮した異動提案を生成
+          proposals =
+            await aiAnalyzer.generateTransferProposalsWithRelationships(
+              candidateEmployees,
+              departments,
+              {
+                // naturalLanguageConditionは渡さない（再フィルタリングを防ぐため）
+                options: {
+                  includeReasons: true,
+                  confidenceThreshold: 0.6,
+                },
+              }
+            )
+        }
+
+        // 対話形式候補者選出では、既存の提案をクリアしてから新しい提案のみを保存
+        dataStore.clearProposals()
+        dataStore.addProposals(proposals)
+
+        console.log(
+          `対話形式候補者選出: ${proposals.length}件の異動提案を生成しました（人間関係制約考慮済み）`
+        )
+
+        return NextResponse.json({
+          success: true,
+          proposals,
+        })
+      }
+
+      case 'generateProposalsWithoutRelationships': {
+        // 従来の異動提案生成（人間関係制約なし）
+        const candidateEmployees = employees.filter((emp) =>
+          candidates.includes(emp.id)
+        )
+
+        console.log(
+          `対話形式候補者選出: ${candidateEmployees.length}名の候補者に対して従来の異動提案を生成`
+        )
+
+        // 対象部署を条件から抽出
+        const targetDepartment = extractTargetDepartment(condition, departments)
+
+        let proposals
+        if (targetDepartment) {
+          // 特定部署への異動提案を生成
+          proposals = await aiAnalyzer.generateTargetedTransferProposals(
+            candidateEmployees,
+            targetDepartment,
+            condition
+          )
+        } else {
           // 通常の異動提案を生成（対話形式では候補者が既に選出済みなので再フィルタリングしない）
           proposals = await aiAnalyzer.generateTransferProposals(
             candidateEmployees,
@@ -103,7 +154,7 @@ export async function POST(request: NextRequest) {
         dataStore.addProposals(proposals)
 
         console.log(
-          `対話形式候補者選出: ${proposals.length}件の異動提案を生成しました`
+          `対話形式候補者選出: ${proposals.length}件の従来の異動提案を生成しました`
         )
 
         return NextResponse.json({

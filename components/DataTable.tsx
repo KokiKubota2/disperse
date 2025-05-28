@@ -42,6 +42,13 @@ export default function DataTable({
       employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       employee.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
       employee.position.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      employee.personality.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      employee.experience.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      employee.aspirations.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (employee.relationships &&
+        employee.relationships
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase())) ||
       employee.skills.some((skill) =>
         skill.toLowerCase().includes(searchTerm.toLowerCase())
       )
@@ -115,7 +122,7 @@ export default function DataTable({
             <div className='relative flex-1'>
               <Search className='absolute left-3 top-3 h-4 w-4 text-muted-foreground' />
               <Input
-                placeholder='名前、部署、役職、スキルで検索...'
+                placeholder='名前、部署、役職、スキル、人間関係で検索...'
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className='pl-10'
@@ -244,6 +251,18 @@ export default function DataTable({
                     ))}
                   </div>
                 </div>
+
+                {selectedEmployee.relationships &&
+                  selectedEmployee.relationships.trim() !== '' && (
+                    <div>
+                      <h5 className='font-medium mb-2'>人間関係</h5>
+                      <div className='p-3 bg-yellow-50 border border-yellow-200 rounded-lg'>
+                        <p className='text-sm text-yellow-800'>
+                          {selectedEmployee.relationships}
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                 <div className='pt-4 border-t'>
                   <Button
